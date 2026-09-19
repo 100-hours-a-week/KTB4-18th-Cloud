@@ -119,11 +119,15 @@ jobs:
           TEST_DB_USERNAME: meomuneum_test
           TEST_DB_PASSWORD: ci-test-password
         run: chmod +x gradlew && ./gradlew test --no-daemon
+      - name: Set up Python
+        if: matrix.service == 'ai'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.13'
       - uses: astral-sh/setup-uv@v6
         if: matrix.service == 'ai'
         with:
           version: '0.8.22'
-          python-version: '3.12.13'
       - name: AI dependencies, entrypoint and tests
         if: matrix.service == 'ai'
         working-directory: source
