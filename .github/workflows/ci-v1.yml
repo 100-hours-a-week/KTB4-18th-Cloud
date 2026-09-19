@@ -1,0 +1,196 @@
+name: MME V1 CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      frontend_ref:
+        description: FE commit SHA or branch
+        default: main
+        required: true
+      backend_ref:
+        description: BE commit SHA or branch
+        default: main
+        required: true
+      ai_ref:
+        description: AI commit SHA or branch
+        default: main
+        required: true
+      ai_app_module:
+        description: Actual AI ASGI module (upstream must implement it first)
+        default: main:app
+        required: true
+      deploy:
+        description: Deploy all three images after successful CI
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  config:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n scripts/deploy.sh && bash -n postgres/init/01-vector.sh
+      - run: python3 -m unittest discover -s tests -v
+      - name: Validate Compose model
+        run: |
+          mkdir -p .runtime
+          touch .runtime/{backend,ai}-{blue,green}.env .runtime/mysql.env .runtime/postgres.env
+          docker compose --env-file .deploy.env.example --profile blue --profile green config --quiet
+      - name: Validate shell
+        run: shellcheck scripts/deploy.sh postgres/init/01-vector.sh
+  build:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: config
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: frontend
+            repository: KTB4-18th-FE
+          - service: backend
+            repository: KTB4-18th-BE
+          - service: ai
+            repository: KTB4-18th-AI
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_DATABASE: meomuneum_test
+          MYSQL_USER: meomuneum_test
+          MYSQL_PASSWORD: ci-test-password
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: 100-hours-a-week/${{ matrix.repository }}
+          ref: ${{ inputs[format('{0}_ref', matrix.service)] }}
+          path: source
+          persist-credentials: false
+      - name: Resolve commit and image
+        id: image
+        env:
+          SERVICE: ${{ matrix.service }}
+          FE_URI: ${{ vars.MME_FRONTEND_ECR_URI }}
+          BE_URI: ${{ vars.MME_BACKEND_ECR_URI }}
+          AI_URI: ${{ vars.MME_AI_ECR_URI }}
+        run: |
+          sha=$(git -C source rev-parse HEAD)
+          case "$SERVICE" in
+            frontend) uri="$FE_URI" ;;
+            backend) uri="$BE_URI" ;;
+            ai) uri="$AI_URI" ;;
+          esac
+          test -n "$uri"
+          echo "tag=$uri:$sha" >> "$GITHUB_OUTPUT"
+          echo "$uri:$sha" > "$SERVICE-image.txt"
+      - uses: actions/setup-node@v4
+        if: matrix.service == 'frontend'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Frontend lint and build
+        if: matrix.service == 'frontend'
+        working-directory: source
+        run: npm ci && npm run lint && npm run build
+      - uses: actions/setup-java@v4
+        if: matrix.service == 'backend'
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Backend tests
+        if: matrix.service == 'backend'
+        working-directory: source
+        env:
+          TEST_DB_URL: jdbc:mysql://127.0.0.1:3306/meomuneum_test
+          TEST_DB_USERNAME: meomuneum_test
+          TEST_DB_PASSWORD: ci-test-password
+        run: chmod +x gradlew && ./gradlew test --no-daemon
+      - uses: astral-sh/setup-uv@v6
+        if: matrix.service == 'ai'
+        with:
+          version: '0.8.22'
+          python-version: '3.12'
+      - name: AI dependencies, entrypoint and tests
+        if: matrix.service == 'ai'
+        working-directory: source
+        env:
+          AI_APP_MODULE: ${{ inputs.ai_app_module }}
+        run: |
+          uv sync --frozen
+          uv run python -c "import importlib,os; m,a=os.environ['AI_APP_MODULE'].split(':'); assert callable(getattr(importlib.import_module(m),a))"
+          if find . -path './.venv' -prune -o -name 'test_*.py' -print | grep -q .; then
+            uv run pytest
+          else
+            echo '::warning::Upstream AI repository has no pytest tests.'
+          fi
+      - name: Prepare Docker context
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: cp "$SERVICE/.dockerignore" source/.dockerignore
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image before requesting AWS credentials
+        uses: docker/build-push-action@v6
+        with:
+          context: source
+          file: ${{ matrix.service }}/Dockerfile
+          load: true
+          tags: ${{ steps.image.outputs.tag }}
+          build-args: AI_APP_MODULE=${{ inputs.ai_app_module }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.MME_AWS_BUILD_ROLE_ARN }}
+          aws-region: ap-northeast-2
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Push verified image
+        env:
+          IMAGE: ${{ steps.image.outputs.tag }}
+        run: docker push "$IMAGE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.service }}-image
+          path: ${{ matrix.service }}-image.txt
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    outputs:
+      frontend: ${{ steps.images.outputs.frontend }}
+      backend: ${{ steps.images.outputs.backend }}
+      ai: ${{ steps.images.outputs.ai }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-image'
+          merge-multiple: true
+      - id: images
+        run: |
+          for service in frontend backend ai; do
+            echo "$service=$(cat "$service-image.txt")" >> "$GITHUB_OUTPUT"
+          done
+  deploy:
+    if: inputs.deploy
+    needs: manifest
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/cd-v1.yml
+    with:
+      frontend_image: ${{ needs.manifest.outputs.frontend }}
+      backend_image: ${{ needs.manifest.outputs.backend }}
+      ai_image: ${{ needs.manifest.outputs.ai }}
+    secrets: inherit

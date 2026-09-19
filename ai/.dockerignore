@@ -1,0 +1,48 @@
+# Python Cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv
+.venv
+env
+
+# Test / Tool Cache
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+
+# Python Build Result
+*.egg-info
+dist
+build
+
+# IDE
+.idea
+.vscode
+
+# Git
+.git
+.gitignore
+
+# OS
+.DS_Store
+
+# Log
+*.log
+logs
+
+# Secret / Environment
+.env
+.env.*
+*.pem
+*.key
+# Deployment state and local credentials
+.deploy.env*
+.runtime
+.state
+.aws
+.ssh

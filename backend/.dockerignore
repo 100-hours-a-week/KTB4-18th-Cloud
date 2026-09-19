@@ -1,0 +1,35 @@
+# Gradle Build / Cache
+.gradle
+build
+
+# IDE
+.idea
+.vscode
+*.iml
+
+# Git
+.git
+.gitignore
+
+# OS
+.DS_Store
+
+# Log
+*.log
+logs
+
+# Secret / Environment
+.env
+.env.*
+*.pem
+*.key
+
+# Docker Compose
+docker-compose.yml
+docker-compose.yaml
+# Deployment state and local credentials
+.deploy.env*
+.runtime
+.state
+.aws
+.ssh

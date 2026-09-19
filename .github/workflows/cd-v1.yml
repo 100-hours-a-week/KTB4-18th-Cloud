@@ -1,0 +1,60 @@
+name: MME V1 CD
+on:
+  workflow_call:
+    inputs:
+      frontend_image:
+        required: true
+        type: string
+      backend_image:
+        required: true
+        type: string
+      ai_image:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      frontend_image:
+        description: Verified FE ECR URI with full commit SHA or digest
+        required: true
+        type: string
+      backend_image:
+        description: Verified BE ECR URI with full commit SHA or digest
+        required: true
+        type: string
+      ai_image:
+        description: Verified AI ECR URI with full commit SHA or digest
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: mme-v1-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.MME_AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-2
+      - name: Validate deployment inputs and prepare SSM command
+        env:
+          INSTANCE_ID: ${{ vars.MME_EC2_INSTANCE_ID }}
+          FRONTEND_IMAGE: ${{ inputs.frontend_image }}
+          BACKEND_IMAGE: ${{ inputs.backend_image }}
+          AI_IMAGE: ${{ inputs.ai_image }}
+        run: python3 scripts/ssm-command.py > /tmp/deploy-command.json
+      - name: Deploy through SSM
+        env:
+          AWS_PAGER: ''
+        run: |
+          set -euo pipefail
+          command_id=$(aws ssm send-command --cli-input-json file:///tmp/deploy-command.json --query Command.CommandId --output text)
+          echo "SSM command: $command_id"
+          python3 scripts/wait-ssm.py "$command_id" '${{ vars.MME_EC2_INSTANCE_ID }}'

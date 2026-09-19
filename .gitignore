@@ -1,0 +1,8 @@
+.DS_Store
+.deploy.env
+.deploy.env.*
+!.deploy.env.example
+.runtime/
+.state/
+.sources/
+__pycache__/

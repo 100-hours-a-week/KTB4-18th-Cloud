@@ -1,0 +1,171 @@
+name: meomuneum
+
+x-common: &common
+  restart: unless-stopped
+  networks: [app]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  mysql:
+    <<: *common
+    image: mysql:8.4
+    env_file:
+      - path: ./.runtime/mysql.env
+        format: raw
+    volumes:
+      - mysql-data:/var/lib/mysql
+    expose: ["3306"]
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql --protocol=TCP -h 127.0.0.1 -u "$$MYSQL_USER" "$$MYSQL_DATABASE" -e "SELECT 1" >/dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    stop_grace_period: 60s
+  postgres:
+    <<: *common
+    image: pgvector/pgvector:0.8.6-pg17-bookworm
+    env_file:
+      - path: ./.runtime/postgres.env
+        format: raw
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    expose: ["5432"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD="$$POSTGRES_PASSWORD" psql -h 127.0.0.1
+          -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+          -c "SELECT vector_dims('[0]'::vector)" >/dev/null
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    stop_grace_period: 60s
+  nginx:
+    <<: *common
+    image: nginx:1.28-alpine
+    ports: ["80:80"]
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/health]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+  ai-router:
+    <<: *common
+    image: nginx:1.28-alpine
+    volumes:
+      - ./ai-router:/etc/nginx/conf.d:ro
+    expose: ["8000"]
+  frontend-blue:
+    <<: *common
+    image: ${FRONTEND_BLUE_IMAGE:?Run scripts/deploy.sh first}
+    profiles: [blue]
+    expose: ["8080"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 30s
+  backend-blue:
+    <<: *common
+    depends_on:
+      mysql:
+        condition: service_healthy
+    image: ${BACKEND_BLUE_IMAGE:?Run scripts/deploy.sh first}
+    profiles: [blue]
+    env_file:
+      - path: ./.runtime/backend-blue.env
+        format: raw
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: "8080"
+      AI_BASE_URL: http://ai-blue:8000
+    expose: ["8080"]
+    healthcheck:
+      test: [CMD, curl, -fsS, --max-time, "3", http://127.0.0.1:8080/actuator/health]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 30s
+  ai-blue:
+    <<: *common
+    depends_on:
+      postgres:
+        condition: service_healthy
+    image: ${AI_BLUE_IMAGE:?Run scripts/deploy.sh first}
+    profiles: [blue]
+    env_file:
+      - path: ./.runtime/ai-blue.env
+        format: raw
+    expose: ["8000"]
+    healthcheck:
+      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:8000'+os.getenv('AI_HEALTH_PATH','/health'), timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 30s
+  frontend-green:
+    <<: *common
+    image: ${FRONTEND_GREEN_IMAGE:?Run scripts/deploy.sh first}
+    profiles: [green]
+    expose: ["8080"]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 30s
+  backend-green:
+    <<: *common
+    depends_on:
+      mysql:
+        condition: service_healthy
+    image: ${BACKEND_GREEN_IMAGE:?Run scripts/deploy.sh first}
+    profiles: [green]
+    env_file:
+      - path: ./.runtime/backend-green.env
+        format: raw
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: "8080"
+      AI_BASE_URL: http://ai-green:8000
+    expose: ["8080"]
+    healthcheck:
+      test: [CMD, curl, -fsS, --max-time, "3", http://127.0.0.1:8080/actuator/health]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 30s
+  ai-green:
+    <<: *common
+    depends_on:
+      postgres:
+        condition: service_healthy
+    image: ${AI_GREEN_IMAGE:?Run scripts/deploy.sh first}
+    profiles: [green]
+    env_file:
+      - path: ./.runtime/ai-green.env
+        format: raw
+    expose: ["8000"]
+    healthcheck:
+      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:8000'+os.getenv('AI_HEALTH_PATH','/health'), timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 24
+      start_period: 30s
+
+networks:
+  app:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  postgres-data:
