@@ -123,7 +123,7 @@ jobs:
         if: matrix.service == 'ai'
         with:
           version: '0.8.22'
-          python-version: '3.12'
+          python-version: '3.12.13'
       - name: AI dependencies, entrypoint and tests
         if: matrix.service == 'ai'
         working-directory: source
