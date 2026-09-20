@@ -1,6 +1,6 @@
 # 머무는 음 V1 배포
 
-이 폴더는 소스 레포와 별도로 관리하는 배포 구성이다. [KTB4-18th-Cloud](https://github.com/100-hours-a-week/KTB4-18th-Cloud)에 이 폴더를 올리면 `.github/workflows`를 사용할 수 있다. 현재 폴더는 Git 저장소가 아니다.
+이 폴더는 소스 레포와 별도로 관리하는 배포 구성 Git 저장소다. [KTB4-18th-Cloud](https://github.com/100-hours-a-week/KTB4-18th-Cloud)에 올리면 `.github/workflows`를 사용할 수 있다.
 
 ## 확인한 소스 (2026-09-19)
 
@@ -52,7 +52,7 @@ DB 초기화 파라미터 (비밀번호는 SecureString):
 
 `config/mysql.env.example`, `config/postgres.env.example`에 이름 예시가 있다. DB 파일이 없는 최초 배포에서만 SSM으로부터 저장하며, 이후 앱 배포에서는 기존 DB 자격 증명을 유지한다. 이미 볼륨이 존재하는 DB는 환경변수를 바꿔도 DB 내부 비밀번호가 자동 변경되지 않는다. 비밀번호 회전은 DB 내부 계정과 런타임 파일을 함께 변경하는 유지보수로 진행한다.
 
-BE의 `PROD_DB_URL`, `PROD_DB_USERNAME`, `PROD_DB_PASSWORD`는 MySQL 설정으로부터 자동 생성하여 SSM의 같은 키보다 우선 적용한다. `/meomuneum/v1/backend/LOGGING_LEVEL_ROOT=INFO` 등 BE 앱 설정을 최소 하나 등록한다. AI에는 동일한 방식으로 `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`를 주입한다. 현재 AI 소스에는 DB 드라이버와 연결 코드도 없으므로 이 값을 읽는 DB 연결 구현이 필요하다.
+BE의 `PROD_DB_URL`, `PROD_DB_USERNAME`, `PROD_DB_PASSWORD`는 MySQL 설정으로부터 자동 생성하여 SSM의 같은 키보다 우선 적용한다. `/meomuneum/v1/backend/LOGGING_LEVEL_ROOT=INFO` 등 BE 앱 설정을 최소 하나 등록한다. AI에는 PostgreSQL 앱 계정으로 만든 `DATABASE_URL`(`postgresql+psycopg://...`)과 `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`를 주입한다. URL 안의 계정 정보는 특수문자로 인해 연결 문자열이 깨지지 않도록 percent-encoding한다.
 AI는 원본 `.env.example`의 `APP_ENV`, `AI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TIMEOUT_SECONDS`, `LASTFM_API_KEY`를 `/meomuneum/v1/ai/` 아래에 등록한다. 실제 앱이 요구하는 값을 설정한다.
 
 SSM 값은 `.runtime/<service>-<slot>.env`에 권한 600으로 기록된다. Compose raw 형식으로 `$`, `#`, 따옴표와 역슬래시를 보존한다. 여러 줄 값은 거부하므로 별도 파일 secret으로 설계해야 한다. `.runtime`, `.state`, `.deploy.env`는 Git에 올리지 않는다. 서버 재부팅 후 컨테이너가 재시작할 수 있도록 env 파일은 `/run` 대신 보호된 프로젝트 디렉터리에 유지한다.

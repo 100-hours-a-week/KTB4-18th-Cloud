@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import sys
+from urllib.parse import quote
 
 
 def read_env(path):
@@ -40,6 +41,11 @@ def prepare(root, slot):
             'PROD_DB_PASSWORD': mysql['MYSQL_PASSWORD'],
         },
         'ai': {
+            'DATABASE_URL': 'postgresql+psycopg://{}:{}@postgres:5432/{}'.format(
+                quote(postgres['POSTGRES_APP_USER'], safe=''),
+                quote(postgres['POSTGRES_APP_PASSWORD'], safe=''),
+                quote(postgres['POSTGRES_DB'], safe=''),
+            ),
             'PGHOST': 'postgres', 'PGPORT': '5432',
             'PGDATABASE': postgres['POSTGRES_DB'], 'PGUSER': postgres['POSTGRES_APP_USER'],
             'PGPASSWORD': postgres['POSTGRES_APP_PASSWORD'],

@@ -48,7 +48,7 @@ if name=='aws':
   if args[args.index('--path')+1].endswith('/mysql'):
    settings={'MYSQL_DATABASE':'meomuneum','MYSQL_USER':'app','MYSQL_PASSWORD':'db$secret','MYSQL_ROOT_PASSWORD':'root-secret'}
   if args[args.index('--path')+1].endswith('/postgres'):
-   settings={'POSTGRES_DB':'ai','POSTGRES_USER':'postgres','POSTGRES_PASSWORD':'admin-secret','POSTGRES_APP_USER':'ai','POSTGRES_APP_PASSWORD':'pg$secret'}
+   settings={'POSTGRES_DB':'ai','POSTGRES_USER':'postgres','POSTGRES_PASSWORD':'admin-secret','POSTGRES_APP_USER':'ai','POSTGRES_APP_PASSWORD':'pg$secret!:@/'}
   print(json.dumps({'Parameters':[{'Name':'/x/'+k,'Value':v} for k,v in settings.items()]}))
  else: print('password')
 if name=='docker':
@@ -88,7 +88,9 @@ if name=='curl' and os.getenv('MOCK_FAIL')=='smoke': sys.exit(1)
         self.assertNotIn('stop mysql', commands)
         self.assertIn('PROD_DB_URL=jdbc:mysql://mysql:3306/meomuneum', (self.root / '.runtime/backend-green.env').read_text())
         self.assertIn('PGUSER=ai', (self.root / '.runtime/ai-green.env').read_text())
-        self.assertIn('PGPASSWORD=pg$secret', (self.root / '.runtime/ai-green.env').read_text())
+        ai_env = (self.root / '.runtime/ai-green.env').read_text()
+        self.assertIn('PGPASSWORD=pg$secret!:@/', ai_env)
+        self.assertIn('DATABASE_URL=postgresql+psycopg://ai:pg%24secret%21%3A%40%2F@postgres:5432/ai', ai_env)
 
     def test_health_failure_does_not_switch(self):
         self.assertEqual(self.deploy().returncode, 0)
