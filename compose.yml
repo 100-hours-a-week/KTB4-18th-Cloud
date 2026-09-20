@@ -62,7 +62,7 @@ services:
     image: nginx:1.28-alpine
     volumes:
       - ./ai-router:/etc/nginx/conf.d:ro
-    expose: ["8000"]
+    expose: ["8001"]
   frontend-blue:
     <<: *common
     image: ${FRONTEND_BLUE_IMAGE:?Run scripts/deploy.sh first}
@@ -87,7 +87,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: "8080"
-      AI_BASE_URL: http://ai-blue:8000
+      AI_BASE_URL: http://ai-router:8001
     expose: ["8080"]
     healthcheck:
       test: [CMD, curl, -fsS, --max-time, "3", http://127.0.0.1:8080/actuator/health]
@@ -105,9 +105,9 @@ services:
     env_file:
       - path: ./.runtime/ai-blue.env
         format: raw
-    expose: ["8000"]
+    expose: ["8001"]
     healthcheck:
-      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:8000'+os.getenv('AI_HEALTH_PATH','/health'), timeout=3)"]
+      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:8001'+os.getenv('AI_HEALTH_PATH','/health'), timeout=3)"]
       interval: 5s
       timeout: 4s
       retries: 24
@@ -136,7 +136,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: "8080"
-      AI_BASE_URL: http://ai-green:8000
+      AI_BASE_URL: http://ai-router:8001
     expose: ["8080"]
     healthcheck:
       test: [CMD, curl, -fsS, --max-time, "3", http://127.0.0.1:8080/actuator/health]
@@ -154,9 +154,9 @@ services:
     env_file:
       - path: ./.runtime/ai-green.env
         format: raw
-    expose: ["8000"]
+    expose: ["8001"]
     healthcheck:
-      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:8000'+os.getenv('AI_HEALTH_PATH','/health'), timeout=3)"]
+      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:8001'+os.getenv('AI_HEALTH_PATH','/health'), timeout=3)"]
       interval: 5s
       timeout: 4s
       retries: 24

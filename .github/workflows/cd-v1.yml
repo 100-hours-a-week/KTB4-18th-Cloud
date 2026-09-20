@@ -2,27 +2,21 @@ name: MME V1 CD
 on:
   workflow_call:
     inputs:
-      frontend_image:
+      service:
         required: true
         type: string
-      backend_image:
-        required: true
-        type: string
-      ai_image:
+      image:
         required: true
         type: string
   workflow_dispatch:
     inputs:
-      frontend_image:
-        description: Verified FE ECR URI with full commit SHA or digest
+      service:
+        description: Service to deploy (frontend, backend, or ai)
         required: true
-        type: string
-      backend_image:
-        description: Verified BE ECR URI with full commit SHA or digest
-        required: true
-        type: string
-      ai_image:
-        description: Verified AI ECR URI with full commit SHA or digest
+        type: choice
+        options: [frontend, backend, ai]
+      image:
+        description: Verified ECR URI with full commit SHA or digest
         required: true
         type: string
 permissions:
@@ -46,9 +40,8 @@ jobs:
       - name: Validate deployment inputs and prepare SSM command
         env:
           INSTANCE_ID: ${{ vars.MME_EC2_INSTANCE_ID }}
-          FRONTEND_IMAGE: ${{ inputs.frontend_image }}
-          BACKEND_IMAGE: ${{ inputs.backend_image }}
-          AI_IMAGE: ${{ inputs.ai_image }}
+          SERVICE: ${{ inputs.service }}
+          IMAGE: ${{ inputs.image }}
         run: python3 scripts/ssm-command.py > /tmp/deploy-command.json
       - name: Deploy through SSM
         env:

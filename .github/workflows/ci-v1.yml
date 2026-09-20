@@ -5,24 +5,21 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      frontend_ref:
-        description: FE commit SHA or branch
-        default: main
+      service:
+        description: Service to build and optionally deploy
+        type: choice
+        options: [frontend, backend, ai]
         required: true
-      backend_ref:
-        description: BE commit SHA or branch
-        default: main
-        required: true
-      ai_ref:
-        description: AI commit SHA or branch
+      source_ref:
+        description: Source commit SHA or branch
         default: main
         required: true
       ai_app_module:
         description: Actual AI ASGI module (upstream must implement it first)
-        default: main:app
+        default: backend.main:app
         required: true
       deploy:
-        description: Deploy all three images after successful CI
+        description: Deploy this image after successful CI
         type: boolean
         default: false
 permissions:
@@ -49,16 +46,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: frontend
-            repository: KTB4-18th-FE
-          - service: backend
-            repository: KTB4-18th-BE
-          - service: ai
-            repository: KTB4-18th-AI
     services:
       mysql:
         image: mysql:8.4
@@ -75,14 +62,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: 100-hours-a-week/${{ matrix.repository }}
-          ref: ${{ inputs[format('{0}_ref', matrix.service)] }}
+          repository: ${{ inputs.service == 'frontend' && '100-hours-a-week/KTB4-18th-FE' || inputs.service == 'backend' && '100-hours-a-week/KTB4-18th-BE' || '100-hours-a-week/KTB4-18th-AI' }}
+          ref: ${{ inputs.source_ref }}
           path: source
           persist-credentials: false
       - name: Resolve commit and image
         id: image
         env:
-          SERVICE: ${{ matrix.service }}
+          SERVICE: ${{ inputs.service }}
           FE_URI: ${{ vars.MME_FRONTEND_ECR_URI }}
           BE_URI: ${{ vars.MME_BACKEND_ECR_URI }}
           AI_URI: ${{ vars.MME_AI_ECR_URI }}
@@ -97,22 +84,22 @@ jobs:
           echo "tag=$uri:$sha" >> "$GITHUB_OUTPUT"
           echo "$uri:$sha" > "$SERVICE-image.txt"
       - uses: actions/setup-node@v4
-        if: matrix.service == 'frontend'
+        if: inputs.service == 'frontend'
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: source/package-lock.json
       - name: Frontend lint and build
-        if: matrix.service == 'frontend'
+        if: inputs.service == 'frontend'
         working-directory: source
         run: npm ci && npm run lint && npm run build
       - uses: actions/setup-java@v4
-        if: matrix.service == 'backend'
+        if: inputs.service == 'backend'
         with:
           distribution: temurin
           java-version: '25'
       - name: Backend tests
-        if: matrix.service == 'backend'
+        if: inputs.service == 'backend'
         working-directory: source
         env:
           TEST_DB_URL: jdbc:mysql://127.0.0.1:3306/meomuneum_test
@@ -120,16 +107,16 @@ jobs:
           TEST_DB_PASSWORD: ci-test-password
         run: chmod +x gradlew && ./gradlew test --no-daemon
       - name: Set up Python
-        if: matrix.service == 'ai'
+        if: inputs.service == 'ai'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12.13'
       - uses: astral-sh/setup-uv@v6
-        if: matrix.service == 'ai'
+        if: inputs.service == 'ai'
         with:
           version: '0.8.22'
       - name: AI dependencies, entrypoint and tests
-        if: matrix.service == 'ai'
+        if: inputs.service == 'ai'
         working-directory: source
         env:
           AI_APP_MODULE: ${{ inputs.ai_app_module }}
@@ -143,19 +130,19 @@ jobs:
           fi
       - name: Prepare Docker context
         env:
-          SERVICE: ${{ matrix.service }}
+          SERVICE: ${{ inputs.service }}
         run: cp "$SERVICE/.dockerignore" source/.dockerignore
       - uses: docker/setup-buildx-action@v3
       - name: Build image before requesting AWS credentials
         uses: docker/build-push-action@v6
         with:
           context: source
-          file: ${{ matrix.service }}/Dockerfile
+          file: ${{ inputs.service }}/Dockerfile
           load: true
           tags: ${{ steps.image.outputs.tag }}
           build-args: AI_APP_MODULE=${{ inputs.ai_app_module }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          cache-from: type=gha,scope=${{ inputs.service }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.service }}
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.MME_AWS_BUILD_ROLE_ARN }}
@@ -167,25 +154,22 @@ jobs:
         run: docker push "$IMAGE"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.service }}-image
-          path: ${{ matrix.service }}-image.txt
+          name: ${{ inputs.service }}-image
+          path: ${{ inputs.service }}-image.txt
   manifest:
     needs: build
     runs-on: ubuntu-24.04
     outputs:
-      frontend: ${{ steps.images.outputs.frontend }}
-      backend: ${{ steps.images.outputs.backend }}
-      ai: ${{ steps.images.outputs.ai }}
+      image: ${{ steps.image.outputs.value }}
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: '*-image'
+          pattern: ${{ inputs.service }}-image
           merge-multiple: true
-      - id: images
-        run: |
-          for service in frontend backend ai; do
-            echo "$service=$(cat "$service-image.txt")" >> "$GITHUB_OUTPUT"
-          done
+      - id: image
+        env:
+          SERVICE: ${{ inputs.service }}
+        run: echo "value=$(cat "$SERVICE-image.txt")" >> "$GITHUB_OUTPUT"
   deploy:
     if: inputs.deploy
     needs: manifest
@@ -194,7 +178,6 @@ jobs:
       id-token: write
     uses: ./.github/workflows/cd-v1.yml
     with:
-      frontend_image: ${{ needs.manifest.outputs.frontend }}
-      backend_image: ${{ needs.manifest.outputs.backend }}
-      ai_image: ${{ needs.manifest.outputs.ai }}
+      service: ${{ inputs.service }}
+      image: ${{ needs.manifest.outputs.image }}
     secrets: inherit

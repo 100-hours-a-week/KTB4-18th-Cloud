@@ -10,7 +10,7 @@
 | [BE](https://github.com/100-hours-a-week/KTB4-18th-BE) | 87cd235b867a0adba870b3066bd92c1e12589638 | Java 25, Spring Boot 4.1.1, Gradle, MySQL, Actuator |
 | [AI](https://github.com/100-hours-a-week/KTB4-18th-AI) | d422e471075b5c278a650018c3638a4cc64f44b1 | Python >=3.12.13, uv.lock, FastAPI/uvicorn 의존성만 존재 |
 
-**AI에는 아직 Python 실행 코드와 health endpoint가 없다.** AI 레포에 ASGI 앱과 `/health`를 구현하고 실제 `module:object`를 CI의 `ai_app_module`로 지정해야 통합 CI/CD가 성공한다. Dockerfile은 존재하지 않는 앱을 실행 가능한 것처럼 통과시키지 않고 import 검사에서 실패한다. AI health 경로를 바꾸면 SSM의 `AI_HEALTH_PATH`와 배포 프로세스의 `AI_HEALTH_PATH`를 함께 맞춘다.
+AI 작업 브랜치의 ASGI 앱은 `backend.main:app`, health endpoint는 `/health`다. 해당 코드가 AI `main`에 병합된 commit을 CI의 `source_ref`로 사용한다. AI health 경로를 바꾸면 SSM의 `AI_HEALTH_PATH`와 배포 프로세스의 `AI_HEALTH_PATH`를 함께 맞춘다.
 
 BE는 `/health`가 아닌 `/actuator/health`를 사용한다. 소스의 Spring Security 변경 시 해당 endpoint에 대한 내부 무인증 health 요청을 허용해야 한다. 현재 BE에 AI 호출 코드는 없다. Compose의 `AI_BASE_URL`은 향후 BE에서 읽도록 구현해야 할 환경변수 계약이다.
 
@@ -18,8 +18,8 @@ BE는 `/health`가 아닌 `/actuator/health`를 사용한다. 소스의 Spring S
 
 - FE 정적 빌드 결과를 Nginx 8080에서 제공한다. SPA history fallback을 포함한다.
 - 외부 요청은 Compose의 Nginx 80번 포트로 들어간다. `/api/`는 경로를 보존하여 BE로, 나머지는 FE로 보낸다.
-- FE/BE/AI를 blue와 green 두 묶음으로 배포한다. 새 슬롯의 세 컨테이너가 healthy가 된 다음 proxy 설정을 reload한다.
-- 각 BE는 같은 색 AI 주소를 사용한다. `ai-router:8000`은 별도 내부 소비자용 active AI 주소다.
+- FE/BE/AI는 각자 독립적인 blue/green 활성 슬롯을 갖는다. 선택한 서비스의 신규 슬롯만 healthy 상태로 만든 뒤 해당 proxy 설정만 reload한다.
+- BE는 `ai-router:8001`을 호출하고, AI 배포가 router의 active AI 주소를 독립적으로 전환한다.
 - EC2 한 대의 같은 Compose에 Nginx, FE, BE, AI, MySQL 8.4, PostgreSQL 17 + pgvector를 함께 실행한다. BE/AI/DB 포트는 호스트에 공개하지 않는다.
 - BE는 `mysql:3306`, AI는 `postgres:5432`에 연결한다. DB는 `mysql-data`, `postgres-data` 영구 볼륨을 사용하며 Blue/Green 슬롯이 공유한다.
 - PostgreSQL 최초 초기화 시 `vector` 확장을 활성화하고 AI 전용 일반 로그인 역할을 생성한다. AI에 PostgreSQL 관리자 비밀번호를 전달하지 않는다.
@@ -32,7 +32,7 @@ BE는 `/health`가 아닌 `/actuator/health`를 사용한다. 소스의 Spring S
 
 ## 서버 준비
 
-Linux EC2에 Docker Engine, Compose **2.30.0 이상**, AWS CLI, Python 3, curl, util-linux(flock)가 필요하다. 서버 CPU는 CI 기본 빌드와 같은 x86_64를 전제로 한다. SSM Agent가 실행되고 AWS Systems Manager에 Online 상태로 등록되어야 한다. CD는 AWS-RunShellScript를 통해 root 권한으로 `/opt/meomuneum`에 설치한다. SSH 키나 22번 공개는 필요하지 않다. blue/green 두 묶음을 동시에 실행할 메모리를 확보한다.
+Linux EC2에 Docker Engine, Compose **2.30.0 이상**, AWS CLI, Python 3, curl, util-linux(flock)가 필요하다. 서버 CPU는 CI 기본 빌드와 같은 x86_64를 전제로 한다. SSM Agent가 실행되고 AWS Systems Manager에 Online 상태로 등록되어야 한다. CD는 AWS-RunShellScript를 통해 root 권한으로 `/opt/meomuneum`에 설치한다. SSH 키나 22번 공개는 필요하지 않다. 각 서비스 배포 시 해당 서비스의 신·구 슬롯을 동시에 실행할 메모리를 확보한다.
 
 서버 IAM Role에는 ECR pull, `/meomuneum/v1/backend/*`, `/meomuneum/v1/ai/*`, `/meomuneum/v1/mysql/*`, `/meomuneum/v1/postgres/*`의 `ssm:GetParametersByPath`, 필요한 KMS 복호화 권한을 부여한다. 각 SSM 파라미터 마지막 이름이 환경변수 이름이 된다.
 
@@ -62,11 +62,12 @@ SSM 값은 `.runtime/<service>-<slot>.env`에 권한 600으로 기록된다. Com
 ```bash
 # 전체 폴더를 /opt/meomuneum에 설치한 후 실행
 cd /opt/meomuneum
-bash scripts/deploy.sh \
-  123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/mme-frontend:<40자리-SHA> \
-  123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/mme-backend:<40자리-SHA> \
-  123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/mme-ai:<40자리-SHA>
+bash scripts/deploy.sh frontend 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/mme-frontend:<40자리-SHA>
+bash scripts/deploy.sh backend 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/mme-backend:<40자리-SHA>
+bash scripts/deploy.sh ai 123456789012.dkr.ecr.ap-northeast-2.amazonaws.com/mme-ai:<40자리-SHA>
 ```
+
+최초 구성은 AI router를 먼저 준비하도록 AI → Backend → Frontend 순서로 배포한다. 이후에는 세 서비스를 원하는 순서로 독립 배포할 수 있다.
 
 이미지는 40자리 소스 commit SHA 또는 `@sha256:<64자리>`만 받는다. ECR 저장소는 태그 불변(immutable)을 설정한다. 같은 commit을 재빌드해야 하면 새 태그를 덮어쓰지 말고 별도 정책으로 처리한다.
 
@@ -84,9 +85,9 @@ Secrets (CD 항목은 production Environment에 설정 가능):
 
 `aws/`의 IAM 정책 초안은 확인된 AWS 계정 `764788758503`, 서울 리전, Cloud 레포, 인스턴스 `i-08d8c71afdc921985`로 제한되어 있다. 다른 대상으로 변경할 때 정책과 `scripts/ssm-command.py`의 검증을 함께 수정한다. 아직 실제 IAM 적용 여부는 AWS에서 확인해야 한다.
 
-`MME V1 CI`는 PR/main push에서 배포 파일 검사를 실행한다. 수동 실행하면 선택한 세 소스 ref를 checkout하고 FE lint/build, MySQL 8.4를 사용하는 BE 테스트, AI import/pytest 검증 후 이미지를 ECR에 게시한다. build 전까지 AWS 자격 증명을 주입하지 않는다. `deploy=true`일 때 세 이미지 검증·게시가 모두 성공한 뒤 CD를 호출한다. 소스 레포의 push가 인프라 CI를 자동으로 실행하지는 않는다. 필요하면 소스 레포 측 dispatch 연동을 별도로 추가한다.
+`MME V1 CI`는 PR/main push에서 배포 파일 검사를 실행한다. 수동 실행에서는 `service`와 `source_ref`를 선택하고 해당 서비스만 검증·빌드하여 ECR에 게시한다. build 전까지 AWS 자격 증명을 주입하지 않는다. `deploy=true`이면 그 서비스의 CD를 호출한다. 소스 레포의 push가 인프라 CI를 자동으로 실행하지는 않는다. 필요하면 소스 레포 측 dispatch 연동을 별도로 추가한다.
 
-`MME V1 CD` 수동 실행은 이미 CI로 검증한 세 이미지 URI를 받는다. main 브랜치에서만 실행한다. OIDC 인증 후 지정 EC2로 SSM Run Command를 보내며, EC2는 공개 Cloud 레포의 정확한 인프라 commit SHA 아카이브를 내려받는다. 따라서 레포를 비공개로 전환하면 아티팩트 전송 경로를 변경해야 한다. production Environment의 배포 허용 브랜치를 main으로 제한한다. 최초 실행에서만 proxy 설정을 설치하며 운영 active route를 덮어쓰지 않는다. `nginx/default.conf` 자체를 변경할 때는 서버에서 백업 후 갱신하고 `nginx -t`/reload하는 별도 설정 배포가 필요하다. 같은 서버에 실행되는 배포는 flock으로 잠근다.
+`MME V1 CD` 수동 실행은 `service`와 CI로 검증한 해당 이미지 URI를 받는다. main 브랜치에서만 실행한다. OIDC 인증 후 지정 EC2로 SSM Run Command를 보내며, EC2는 공개 Cloud 레포의 정확한 인프라 commit SHA 아카이브를 내려받는다. 따라서 레포를 비공개로 전환하면 아티팩트 전송 경로를 변경해야 한다. production Environment의 배포 허용 브랜치를 main으로 제한한다. 최초 실행에서만 proxy 설정을 설치하며 운영 active route를 덮어쓰지 않는다. `nginx/default.conf` 자체를 변경할 때는 서버에서 백업 후 갱신하고 `nginx -t`/reload하는 별도 설정 배포가 필요하다. 같은 서버에 실행되는 배포는 flock으로 잠근다.
 
 GitHub production Environment 보호 규칙과 허용 branch를 팀 정책에 맞게 설정한다. 실제 AWS 리소스 생성, GitHub secret 등록, push, 운영 배포는 이 로컬 수정에 포함되지 않는다.
 
