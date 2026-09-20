@@ -124,9 +124,13 @@ rollback() {
     if [[ "$switched" == true ]]; then
       cp ".state/$(basename "$route").previous" "$route"
       if [[ "$service" == ai && -n "$previous" ]]; then
-        compose exec -T ai-router nginx -t && compose exec -T ai-router nginx -s reload || true
+        if compose exec -T ai-router nginx -t; then
+          compose exec -T ai-router nginx -s reload || true
+        fi
       elif [[ "$service" != ai && -n "$previous" ]]; then
-        compose exec -T nginx nginx -t && compose exec -T nginx nginx -s reload || true
+        if compose exec -T nginx nginx -t; then
+          compose exec -T nginx nginx -s reload || true
+        fi
       fi
     fi
     compose stop "$service-$slot" || true
