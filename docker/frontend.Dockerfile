@@ -12,6 +12,10 @@ RUN npm run build
 # runtime stage: 보안 패치가 적용된 Alpine 기반 non-root Nginx로 정적 파일만 제공합니다.
 # digest를 고정하여 CI와 운영 환경에서 동일한 기반 이미지를 사용합니다.
 FROM nginxinc/nginx-unprivileged:1.31.3-alpine3.24@sha256:f972e5322b9797dc2a6b830030094426437b1ae7032e4644496395336ac6fdac
+# 런타임 OS 보안 패치만 적용하고 다시 non-root 사용자로 전환합니다.
+USER root
+RUN apk upgrade --no-cache
+USER nginx
 COPY --from=build /app/dist /usr/share/nginx/html
 RUN printf 'server { listen 8080; root /usr/share/nginx/html; location = /health { return 200 "ok"; } location / { try_files $uri $uri/ /index.html; } }\n' > /etc/nginx/conf.d/default.conf
 EXPOSE 8080
