@@ -86,7 +86,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: "8080"
-      # CHANGED: AI는 단일 컨테이너로 운영하므로 router 없이 서비스 DNS로 호출합니다.
+      # AI는 단일 컨테이너로 운영하므로 서비스 DNS로 직접 호출합니다.
       AI_BASE_URL: http://ai:8001
     expose: ["8080"]
     healthcheck:
@@ -95,7 +95,7 @@ services:
       timeout: 4s
       retries: 24
       start_period: 30s
-  # CHANGED: AI는 짧은 중단을 허용하는 단일 교체 배포입니다.
+  # AI는 짧은 중단을 허용하는 단일 교체 방식으로 배포합니다.
   ai:
     <<: *common
     depends_on:

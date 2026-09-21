@@ -7,18 +7,18 @@ COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy PATH="/app/.venv/bin:$PATH"
 COPY pyproject.toml uv.lock ./
-# CHANGED: uv 다운로드 cache를 재사용하되 운영 dependency만 설치합니다.
+# uv 다운로드 캐시를 재사용하고 운영 의존성만 설치합니다.
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
 COPY . .
 # AI 앱의 실제 ASGI module:object. CI 입력으로 override할 수 있습니다.
 ARG AI_APP_MODULE=backend.main:app
 ENV AI_APP_MODULE=${AI_APP_MODULE}
 RUN python -c "import importlib,os; m,a=os.environ['AI_APP_MODULE'].split(':'); assert callable(getattr(importlib.import_module(m),a))"
-# CHANGED: 숫자 UID/GID를 명시적으로 생성하고 앱 디렉터리 권한을 제한합니다.
+# 숫자 UID/GID를 명시적으로 생성하고 앱 디렉터리 권한을 제한합니다.
 RUN groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid 10001 app && chown -R app:app /app
 USER 10001:10001
 EXPOSE 8001
-# CHANGED: readiness가 PostgreSQL과 필수 테이블까지 확인하므로 배포 판정에 사용합니다.
+# readiness가 PostgreSQL과 필수 테이블까지 확인하므로 배포 판정에 사용합니다.
 HEALTHCHECK --interval=10s --timeout=4s --start-period=30s --retries=12 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/readiness', timeout=3)" || exit 1
 ENV UVICORN_WORKERS=1

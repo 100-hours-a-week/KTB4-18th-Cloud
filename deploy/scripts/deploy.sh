@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Linux / Docker Compose >= 2.30.0 / AWS CLI / Python 3 / util-linux
-# CHANGED: FE·BE는 서비스별 Blue/Green, AI는 router 없는 단일 교체 배포입니다.
+# FE·BE는 서비스별 Blue/Green, AI는 단일 교체 방식으로 배포합니다.
 set -Eeuo pipefail
 umask 077
 

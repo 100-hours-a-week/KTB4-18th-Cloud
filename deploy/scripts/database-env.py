@@ -72,7 +72,7 @@ def prepare(root, slot, service):
         }
 
     # 5. 저장할 대상 환경변수 파일 경로 결정
-    # CHANGED: AI는 단일 컨테이너라 slot 없는 ai.env 파일을 사용하고, 백엔드는 슬롯별(blue/green) 파일 사용
+    # AI는 공통 환경 파일을 사용하고, 백엔드는 Blue/Green 슬롯별 환경 파일을 사용합니다.
     path = root / ('ai.env' if service == 'ai' else service + '-' + slot + '.env')
 
     # 기존에 파일이 있다면 읽어온 뒤 새로운 설정값(settings)으로 갱신

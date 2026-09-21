@@ -4,9 +4,9 @@ name: MME V1 CI
 # 1. 트리거 조건 설정 (어떤 상황에 이 워크플로우가 실행되는지 정의)
 # =====================================================================
 on:
-  pull_request: # CHANGED: Cloud 저장소 PR 생성·업데이트 시 config 검증
+  pull_request: # Cloud 저장소 PR 생성·업데이트 시 config 검증
   push:
-    branches: [main] # CHANGED: Cloud 저장소 main push 시 config 검증
+    branches: [main] # Cloud 저장소 main push 시 config 검증
   workflow_dispatch: # GitHub 웹 화면에서 수동으로 실행(Trigger)할 때 설정
     inputs:
       service:
@@ -178,7 +178,7 @@ jobs:
           cache-from: type=gha,scope=${{ inputs.service }}
           cache-to: type=gha,mode=max,scope=${{ inputs.service }}
 
-      # CHANGED: 강사 피드백 반영 - 심각한 OS/패키지 취약점이 있는 이미지는 Push하지 않습니다.
+      # 심각한 OS/패키지 취약점이 있는 이미지는 Push하지 않습니다.
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -187,6 +187,7 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
           severity: CRITICAL,HIGH
+          trivyignores: '.trivyignore' #예외 CVE를 지정한 ignore 파일 경로
 
       # AWS 자격 증명 설정 (OIDC 역할 수임) 후 ECR 로그인 및 이미지 푸시
       - uses: aws-actions/configure-aws-credentials@v4

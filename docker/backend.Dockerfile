@@ -3,7 +3,7 @@
 # build stage: Gradle로 실행 가능한 Spring Boot JAR를 생성합니다.
 FROM eclipse-temurin:25-jdk AS build
 WORKDIR /app
-# CHANGED: 의존성 파일을 소스보다 먼저 복사하고 Gradle cache를 재사용합니다.
+# 의존성 파일을 소스보다 먼저 복사하고 Gradle 캐시를 재사용합니다.
 COPY gradle ./gradle
 COPY gradlew build.gradle settings.gradle ./
 RUN chmod +x gradlew
@@ -17,10 +17,10 @@ FROM eclipse-temurin:25-jre
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build --chown=10001:10001 /app/app.jar ./app.jar
-# CHANGED: 최소 권한 사용자로 실행합니다.
+# 최소 권한 사용자로 실행합니다.
 USER 10001:10001
 EXPOSE 8080
-# CHANGED: 운영 환경에서 JVM heap/timezone 옵션을 JAVA_OPTS로 주입할 수 있습니다.
+# 운영 환경에서 JVM heap과 timezone 옵션을 JAVA_OPTS로 주입할 수 있습니다.
 ENV JAVA_OPTS=""
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=6 \
   CMD curl -fsS http://127.0.0.1:8080/actuator/health || exit 1

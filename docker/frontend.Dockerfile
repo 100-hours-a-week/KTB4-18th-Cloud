@@ -4,7 +4,7 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-# CHANGED: npm cache를 BuildKit cache mount로 재사용합니다.
+# npm 캐시는 BuildKit 캐시 마운트로 재사용합니다.
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build
