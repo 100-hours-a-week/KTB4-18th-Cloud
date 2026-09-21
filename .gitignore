@@ -1,3 +1,4 @@
+# macOS metadata와 배포 중 생성되는 상태·secret 파일은 Git에 포함하지 않습니다.
 .DS_Store
 .deploy.env
 .deploy.env.*

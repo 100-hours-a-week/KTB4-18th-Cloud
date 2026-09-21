@@ -1,5 +1,7 @@
+# 단일 EC2에서 FE·BE Blue/Green, AI 단일 인스턴스, 두 DB를 함께 운영합니다.
 name: meomuneum
 
+# 모든 컨테이너에 공통으로 적용할 재시작·네트워크·로그 회전 설정입니다.
 x-common: &common
   restart: unless-stopped
   networks: [app]
@@ -8,6 +10,7 @@ x-common: &common
     options: {max-size: "10m", max-file: "3"}
 
 services:
+  # Backend 전용 MySQL. 실제 앱 계정으로 SELECT 1까지 성공해야 healthy입니다.
   mysql:
     <<: *common
     image: mysql:8.4
@@ -24,6 +27,7 @@ services:
       retries: 30
       start_period: 30s
     stop_grace_period: 60s
+  # AI 전용 PostgreSQL + pgvector. 데이터는 named volume에 유지됩니다.
   postgres:
     <<: *common
     image: pgvector/pgvector:0.8.6-pg17-bookworm
@@ -32,7 +36,7 @@ services:
         format: raw
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
     expose: ["5432"]
     healthcheck:
       test:
@@ -46,26 +50,21 @@ services:
       retries: 30
       start_period: 10s
     stop_grace_period: 60s
+  # 외부 80 포트 진입점. 활성 FE·BE 슬롯으로 요청을 전달합니다.
   nginx:
     <<: *common
     image: nginx:1.28-alpine
     ports: ["80:80"]
     volumes:
-      - ./nginx:/etc/nginx/conf.d:ro
+      - ./deploy/nginx:/etc/nginx/conf.d:ro
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1/health]
       interval: 10s
       timeout: 3s
       retries: 6
-  ai-router:
-    <<: *common
-    image: nginx:1.28-alpine
-    volumes:
-      - ./ai-router:/etc/nginx/conf.d:ro
-    expose: ["8001"]
   frontend-blue:
     <<: *common
-    image: ${FRONTEND_BLUE_IMAGE:?Run scripts/deploy.sh first}
+    image: ${FRONTEND_BLUE_IMAGE:?Run deploy/scripts/deploy.sh first}
     profiles: [blue]
     expose: ["8080"]
     healthcheck:
@@ -79,7 +78,7 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    image: ${BACKEND_BLUE_IMAGE:?Run scripts/deploy.sh first}
+    image: ${BACKEND_BLUE_IMAGE:?Run deploy/scripts/deploy.sh first}
     profiles: [blue]
     env_file:
       - path: ./.runtime/backend-blue.env
@@ -87,7 +86,8 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: "8080"
-      AI_BASE_URL: http://ai-router:8001
+      # CHANGED: AI는 단일 컨테이너로 운영하므로 router 없이 서비스 DNS로 호출합니다.
+      AI_BASE_URL: http://ai:8001
     expose: ["8080"]
     healthcheck:
       test: [CMD, curl, -fsS, --max-time, "3", http://127.0.0.1:8080/actuator/health]
@@ -95,26 +95,26 @@ services:
       timeout: 4s
       retries: 24
       start_period: 30s
-  ai-blue:
+  # CHANGED: AI는 짧은 중단을 허용하는 단일 교체 배포입니다.
+  ai:
     <<: *common
     depends_on:
       postgres:
         condition: service_healthy
-    image: ${AI_BLUE_IMAGE:?Run scripts/deploy.sh first}
-    profiles: [blue]
+    image: ${AI_IMAGE:?Run deploy/scripts/deploy.sh first}
     env_file:
-      - path: ./.runtime/ai-blue.env
+      - path: ./.runtime/ai.env
         format: raw
     expose: ["8001"]
     healthcheck:
-      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:8001'+os.getenv('AI_HEALTH_PATH','/health'), timeout=3)"]
-      interval: 5s
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/readiness', timeout=3)"]
+      interval: 10s
       timeout: 4s
-      retries: 24
+      retries: 18
       start_period: 30s
   frontend-green:
     <<: *common
-    image: ${FRONTEND_GREEN_IMAGE:?Run scripts/deploy.sh first}
+    image: ${FRONTEND_GREEN_IMAGE:?Run deploy/scripts/deploy.sh first}
     profiles: [green]
     expose: ["8080"]
     healthcheck:
@@ -128,7 +128,7 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    image: ${BACKEND_GREEN_IMAGE:?Run scripts/deploy.sh first}
+    image: ${BACKEND_GREEN_IMAGE:?Run deploy/scripts/deploy.sh first}
     profiles: [green]
     env_file:
       - path: ./.runtime/backend-green.env
@@ -136,27 +136,10 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: "8080"
-      AI_BASE_URL: http://ai-router:8001
+      AI_BASE_URL: http://ai:8001
     expose: ["8080"]
     healthcheck:
       test: [CMD, curl, -fsS, --max-time, "3", http://127.0.0.1:8080/actuator/health]
-      interval: 5s
-      timeout: 4s
-      retries: 24
-      start_period: 30s
-  ai-green:
-    <<: *common
-    depends_on:
-      postgres:
-        condition: service_healthy
-    image: ${AI_GREEN_IMAGE:?Run scripts/deploy.sh first}
-    profiles: [green]
-    env_file:
-      - path: ./.runtime/ai-green.env
-        format: raw
-    expose: ["8001"]
-    healthcheck:
-      test: [CMD, python, -c, "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:8001'+os.getenv('AI_HEALTH_PATH','/health'), timeout=3)"]
       interval: 5s
       timeout: 4s
       retries: 24

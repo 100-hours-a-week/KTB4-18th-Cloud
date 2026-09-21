@@ -38,16 +38,16 @@ flock -n 9
     script += 'curl --fail --location --silent --show-error --max-time 120 ' + shlex.quote(
         'https://github.com/' + repository + '/archive/' + sha + '.tar.gz') + ' -o "$stage/source.tar.gz"\n'
     script += '''tar -xzf "$stage/source.tar.gz" -C "$stage" --strip-components=1
-mkdir -p scripts nginx ai-router postgres/init
+mkdir -p deploy/scripts deploy/nginx deploy/postgres/init
 cp "$stage/compose.yml" compose.yml
-cp "$stage/scripts/"*.sh "$stage/scripts/"*.py scripts/
-cp "$stage/postgres/init/"* postgres/init/
-for config in nginx/default.conf nginx/backend-upstream.conf ai-router/default.conf; do
+cp "$stage/deploy/scripts/"*.sh "$stage/deploy/scripts/"*.py deploy/scripts/
+cp "$stage/deploy/postgres/init/"* deploy/postgres/init/
+for config in deploy/nginx/default.conf deploy/nginx/backend-upstream.conf; do
   if [[ ! -f "$config" ]]; then cp "$stage/$config" "$config"; fi
 done
 flock -u 9
 '''
-    script += 'bash scripts/deploy.sh ' + shlex.quote(service) + ' ' + shlex.quote(image) + '\n'
+    script += 'bash deploy/scripts/deploy.sh ' + shlex.quote(service) + ' ' + shlex.quote(image) + '\n'
     # AWS-RunShellScript uses /bin/sh; explicitly invoke bash for pipefail and arrays.
     wrapped = "bash <<'MME_DEPLOY_SCRIPT'\n" + script + 'MME_DEPLOY_SCRIPT\n'
     return {'DocumentName': 'AWS-RunShellScript', 'InstanceIds': [instance],

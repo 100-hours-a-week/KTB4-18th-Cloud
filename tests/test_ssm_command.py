@@ -1,9 +1,11 @@
+"""CD가 신뢰한 입력만 받아 안전한 SSM 명령을 만드는지 검사합니다."""
 import importlib.util
 from pathlib import Path
 import subprocess
 import unittest
 
-spec = importlib.util.spec_from_file_location('ssm_command', Path(__file__).resolve().parents[1] / 'scripts/ssm-command.py')
+spec = importlib.util.spec_from_file_location(
+    'ssm_command', Path(__file__).resolve().parents[1] / 'deploy/scripts/ssm-command.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
@@ -22,7 +24,7 @@ class SSMCommand(unittest.TestCase):
         self.assertEqual(value['InstanceIds'], ['i-08d8c71afdc921985'])
         script = value['Parameters']['commands'][0]
         self.assertIn('/archive/' + 'a' * 40 + '.tar.gz', script)
-        self.assertIn('bash scripts/deploy.sh backend ', script)
+        self.assertIn('bash deploy/scripts/deploy.sh backend ', script)
         self.assertEqual(subprocess.run(['bash', '-n'], input=script, text=True).returncode, 0)
         self.assertNotIn('stop mysql', script)
 

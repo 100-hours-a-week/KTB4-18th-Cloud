@@ -1,3 +1,4 @@
+# frontend.Dockerfile 전용 ignore: 로컬 결과물과 secret을 build context에서 제외합니다.
 node_modules
 dist
 .git

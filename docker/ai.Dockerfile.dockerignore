@@ -1,3 +1,4 @@
+# ai.Dockerfile 전용 ignore: Python cache와 모델 외 secret을 제외합니다.
 # Python Cache
 __pycache__
 *.pyc

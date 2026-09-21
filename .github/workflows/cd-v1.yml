@@ -1,4 +1,6 @@
 name: MME V1 CD
+
+# CI에서 호출하거나 GitHub 화면에서 검증된 이미지 URI를 직접 입력해 실행합니다.
 on:
   workflow_call:
     inputs:
@@ -23,6 +25,7 @@ permissions:
   contents: read
   id-token: write
 concurrency:
+  # 같은 EC2에 두 배포가 동시에 실행되지 않도록 직렬화합니다.
   group: mme-v1-production
   cancel-in-progress: false
 jobs:
@@ -33,6 +36,7 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+      # 장기 AWS Key 대신 GitHub OIDC로 배포 Role을 임시 수임합니다.
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.MME_AWS_DEPLOY_ROLE_ARN }}
@@ -42,12 +46,13 @@ jobs:
           INSTANCE_ID: ${{ vars.MME_EC2_INSTANCE_ID }}
           SERVICE: ${{ inputs.service }}
           IMAGE: ${{ inputs.image }}
-        run: python3 scripts/ssm-command.py > /tmp/deploy-command.json
+        run: python3 deploy/scripts/ssm-command.py > /tmp/deploy-command.json
       - name: Deploy through SSM
         env:
           AWS_PAGER: ''
         run: |
           set -euo pipefail
+          # SSH를 열지 않고 SSM Run Command로 EC2 배포 스크립트를 실행합니다.
           command_id=$(aws ssm send-command --cli-input-json file:///tmp/deploy-command.json --query Command.CommandId --output text)
           echo "SSM command: $command_id"
-          python3 scripts/wait-ssm.py "$command_id" '${{ vars.MME_EC2_INSTANCE_ID }}'
+          python3 deploy/scripts/wait-ssm.py "$command_id" '${{ vars.MME_EC2_INSTANCE_ID }}'

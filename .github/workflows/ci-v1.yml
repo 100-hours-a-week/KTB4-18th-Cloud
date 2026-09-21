@@ -1,14 +1,18 @@
 name: MME V1 CI
+
+# =====================================================================
+# 1. 트리거 조건 설정 (어떤 상황에 이 워크플로우가 실행되는지 정의)
+# =====================================================================
 on:
-  pull_request:
+  pull_request: # CHANGED: Cloud 저장소 PR 생성·업데이트 시 config 검증
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches: [main] # CHANGED: Cloud 저장소 main push 시 config 검증
+  workflow_dispatch: # GitHub 웹 화면에서 수동으로 실행(Trigger)할 때 설정
     inputs:
       service:
         description: Service to build and optionally deploy
         type: choice
-        options: [frontend, backend, ai]
+        options: [frontend, backend, ai] # 빌드할 대상 선택 (프론트/백엔드/AI)
         required: true
       source_ref:
         description: Source commit SHA or branch
@@ -21,31 +25,51 @@ on:
       deploy:
         description: Deploy this image after successful CI
         type: boolean
-        default: false
+        default: false # 빌드 성공 후 자동으로 배포까지 이어갈지 여부
+
 permissions:
   contents: read
+
 jobs:
+  # =====================================================================
+  # 2. config 잡: 코드 문법 검사, 셸 스크립트 검증, 컴포즈 파일 유효성 검사
+  # =====================================================================
   config:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: bash -n scripts/deploy.sh && bash -n postgres/init/01-vector.sh
+
+      # 셸 스크립트 및 초기화 스크립트 문법 검사 (-n 옵션)
+      - run: bash -n deploy/scripts/deploy.sh && bash -n deploy/postgres/init/01-vector.sh
+
+      # 파이썬 유닛 테스트 실행
       - run: python3 -m unittest discover -s tests -v
+
+      # Docker Compose 설정 파일 모델 검증 (오류가 없는지 확인)
       - name: Validate Compose model
         run: |
           mkdir -p .runtime
-          touch .runtime/{backend,ai}-{blue,green}.env .runtime/mysql.env .runtime/postgres.env
+          touch .runtime/backend-{blue,green}.env .runtime/ai.env .runtime/mysql.env .runtime/postgres.env
           docker compose --env-file .deploy.env.example --profile blue --profile green config --quiet
+
+      # 셸 스크립트 코드 정적 분석 (ShellCheck)
       - name: Validate shell
-        run: shellcheck scripts/deploy.sh postgres/init/01-vector.sh
+        run: shellcheck deploy/scripts/deploy.sh deploy/postgres/init/01-vector.sh
+
+  # =====================================================================
+  # 3. build 잡: 소스코드를 가져와 테스트하고, Docker 이미지를 빌드 및 ECR에 푸시
+  # =====================================================================
   build:
+    # 수동 실행(workflow_dispatch)이고 main 브랜치일 때만 작동
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    needs: config
+    needs: config # config 잡이 성공해야만 실행
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
-      id-token: write
+      id-token: write # AWS OIDC 로그인을 위한 권한
+
+    # Backend 테스트용 MySQL입니다. job-level service라 다른 서비스 선택 시에도 생성됩니다.
     services:
       mysql:
         image: mysql:8.4
@@ -56,16 +80,21 @@ jobs:
           MYSQL_PASSWORD: ci-test-password
         ports: ["3306:3306"]
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-cmd="MYSQL_PWD=ci-test-password mysql -h 127.0.0.1 -u meomuneum_test meomuneum_test -e 'SELECT 1'"
           --health-interval=5s --health-timeout=5s --health-retries=30
+
     steps:
       - uses: actions/checkout@v4
+
+      # 선택한 서비스(프론트/백엔드/AI)의 업스트림 소스코드 저장소를 동적으로 가져오기
       - uses: actions/checkout@v4
         with:
           repository: ${{ inputs.service == 'frontend' && '100-hours-a-week/KTB4-18th-FE' || inputs.service == 'backend' && '100-hours-a-week/KTB4-18th-BE' || '100-hours-a-week/KTB4-18th-AI' }}
           ref: ${{ inputs.source_ref }}
           path: source
           persist-credentials: false
+
+      # 깃 커밋 SHA 해시를 태그로 사용하여 도커 이미지 이름 결정
       - name: Resolve commit and image
         id: image
         env:
@@ -83,6 +112,8 @@ jobs:
           test -n "$uri"
           echo "tag=$uri:$sha" >> "$GITHUB_OUTPUT"
           echo "$uri:$sha" > "$SERVICE-image.txt"
+
+      # [프론트엔드 전용] Node.js 세팅 및 린트/빌드 검증
       - uses: actions/setup-node@v4
         if: inputs.service == 'frontend'
         with:
@@ -93,6 +124,8 @@ jobs:
         if: inputs.service == 'frontend'
         working-directory: source
         run: npm ci && npm run lint && npm run build
+
+      # [백엔드 전용] Java 세팅 및 Gradle 테스트 실행
       - uses: actions/setup-java@v4
         if: inputs.service == 'backend'
         with:
@@ -106,6 +139,8 @@ jobs:
           TEST_DB_USERNAME: meomuneum_test
           TEST_DB_PASSWORD: ci-test-password
         run: chmod +x gradlew && ./gradlew test --no-daemon
+
+      # [AI 전용] Python 및 uv 패키지 매니저 세팅 후 의존성/모듈 검증
       - name: Set up Python
         if: inputs.service == 'ai'
         uses: actions/setup-python@v5
@@ -128,21 +163,32 @@ jobs:
           else
             echo '::warning::Upstream AI repository has no pytest tests.'
           fi
-      - name: Prepare Docker context
-        env:
-          SERVICE: ${{ inputs.service }}
-        run: cp "$SERVICE/.dockerignore" source/.dockerignore
+
+      # 서비스별 Dockerfile.dockerignore는 Docker가 자동으로 적용합니다.
+      # Docker Buildx를 이용한 이미지 빌드 (캐시 활용)
       - uses: docker/setup-buildx-action@v3
       - name: Build image before requesting AWS credentials
         uses: docker/build-push-action@v6
         with:
           context: source
-          file: ${{ inputs.service }}/Dockerfile
+          file: docker/${{ inputs.service }}.Dockerfile
           load: true
           tags: ${{ steps.image.outputs.tag }}
           build-args: AI_APP_MODULE=${{ inputs.ai_app_module }}
           cache-from: type=gha,scope=${{ inputs.service }}
           cache-to: type=gha,mode=max,scope=${{ inputs.service }}
+
+      # CHANGED: 강사 피드백 반영 - 심각한 OS/패키지 취약점이 있는 이미지는 Push하지 않습니다.
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.tag }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      # AWS 자격 증명 설정 (OIDC 역할 수임) 후 ECR 로그인 및 이미지 푸시
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.MME_AWS_BUILD_ROLE_ARN }}
@@ -152,10 +198,16 @@ jobs:
         env:
           IMAGE: ${{ steps.image.outputs.tag }}
         run: docker push "$IMAGE"
+
+      # 빌드된 이미지 이름을 아티팩트로 업로드하여 다음 잡(Job)에 전달
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.service }}-image
           path: ${{ inputs.service }}-image.txt
+
+  # =====================================================================
+  # 4. manifest 잡: 빌드된 이미지의 태그/URI 정보를 읽어오는 중간 다리 역할
+  # =====================================================================
   manifest:
     needs: build
     runs-on: ubuntu-24.04
@@ -170,13 +222,17 @@ jobs:
         env:
           SERVICE: ${{ inputs.service }}
         run: echo "value=$(cat "$SERVICE-image.txt")" >> "$GITHUB_OUTPUT"
+
+  # =====================================================================
+  # 5. deploy 잡: 사용자가 `deploy: true`를 선택했을 경우 CD 워크플로우 호출
+  # =====================================================================
   deploy:
-    if: inputs.deploy
+    if: inputs.deploy # 배포 옵션이 true일 때만 실행
     needs: manifest
     permissions:
       contents: read
       id-token: write
-    uses: ./.github/workflows/cd-v1.yml
+    uses: ./.github/workflows/cd-v1.yml # 별도의 CD 파이프라인 호출
     with:
       service: ${{ inputs.service }}
       image: ${{ needs.manifest.outputs.image }}

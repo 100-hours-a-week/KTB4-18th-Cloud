@@ -1,3 +1,4 @@
+# backend.Dockerfile 전용 ignore: Gradle 결과물과 로컬 secret을 제외합니다.
 # Gradle Build / Cache
 .gradle
 build

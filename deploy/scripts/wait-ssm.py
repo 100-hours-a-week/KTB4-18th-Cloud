@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+"""SSM Run Command가 끝날 때까지 상태를 조회하고 원격 로그를 전달합니다."""
 import json
 import subprocess
 import sys
 import time
 
+# GitHub Actions의 CD job이 전달한 명령 ID와 EC2 ID를 사용합니다.
 command_id, instance_id = sys.argv[1:]
 for _ in range(192):
     result = subprocess.run(['aws', 'ssm', 'get-command-invocation', '--command-id', command_id,
