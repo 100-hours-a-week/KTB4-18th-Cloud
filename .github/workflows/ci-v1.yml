@@ -94,7 +94,7 @@ jobs:
           path: source
           persist-credentials: false
 
-      # 깃 커밋 SHA 해시를 태그로 사용하여 도커 이미지 이름 결정
+      # 서비스 소스와 Cloud 빌드 설정을 함께 식별할 수 있는 이미지 태그를 생성합니다.
       - name: Resolve commit and image
         id: image
         env:
@@ -103,15 +103,17 @@ jobs:
           BE_URI: ${{ vars.MME_BACKEND_ECR_URI }}
           AI_URI: ${{ vars.MME_AI_ECR_URI }}
         run: |
-          sha=$(git -C source rev-parse HEAD)
+          source_sha=$(git -C source rev-parse HEAD)
+          cloud_sha=${GITHUB_SHA:0:12}
           case "$SERVICE" in
             frontend) uri="$FE_URI" ;;
             backend) uri="$BE_URI" ;;
             ai) uri="$AI_URI" ;;
           esac
           test -n "$uri"
-          echo "tag=$uri:$sha" >> "$GITHUB_OUTPUT"
-          echo "$uri:$sha" > "$SERVICE-image.txt"
+          image="$uri:$source_sha-$cloud_sha"
+          echo "tag=$image" >> "$GITHUB_OUTPUT"
+          echo "$image" > "$SERVICE-image.txt"
 
       # [프론트엔드 전용] Node.js 세팅 및 린트/빌드 검증
       - uses: actions/setup-node@v4

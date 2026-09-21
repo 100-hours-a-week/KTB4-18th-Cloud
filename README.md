@@ -126,12 +126,12 @@ Traffic 전환
 
 ### Image Version
 
-배포 이미지는 `latest` 대신 **소스 Commit SHA**를 사용합니다.
+배포 이미지는 `latest` 대신 **소스 Commit SHA와 Cloud 설정 Commit SHA**를 사용합니다.
 
 ```text
-mme-backend:<commit-sha>
-mme-frontend:<commit-sha>
-mme-ai:<commit-sha>
+mme-backend:<source-sha>-<cloud-sha>
+mme-frontend:<source-sha>-<cloud-sha>
+mme-ai:<source-sha>-<cloud-sha>
 ```
 
 이를 통해 어떤 소스가 운영에 배포됐는지 추적하고 이전 버전으로 되돌릴 수 있도록 했습니다.
