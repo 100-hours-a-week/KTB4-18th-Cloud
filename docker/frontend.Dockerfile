@@ -14,7 +14,9 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.31.3-alpine3.24@sha256:f972e5322b9797dc2a6b830030094426437b1ae7032e4644496395336ac6fdac
 # 런타임 OS 보안 패치만 적용하고 다시 non-root 사용자로 전환합니다.
 USER root
-RUN apk upgrade --no-cache
+# 최소 안전 버전도 명시해 오래된 BuildKit 캐시가 취약 패키지를 재사용하지 못하게 합니다.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache 'libexpat>=2.8.5-r0'
 USER nginx
 COPY --from=build /app/dist /usr/share/nginx/html
 RUN printf 'server { listen 8080; root /usr/share/nginx/html; location = /health { return 200 "ok"; } location / { try_files $uri $uri/ /index.html; } }\n' > /etc/nginx/conf.d/default.conf
