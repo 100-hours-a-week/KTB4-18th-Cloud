@@ -4,12 +4,15 @@ metadata:
   name: chat
   namespace: v3-app
 spec:
-  replicas: 1
+  # replicas는 HPA(scaling.yaml)에서 관
   selector:
     matchLabels:
       app: chat
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
@@ -52,9 +55,17 @@ spec:
         - secretRef:
             name: chat-env
         image: 764788758503.dkr.ecr.ap-northeast-2.amazonaws.com/mme-v3-chat@sha256:6dd6c6d264c48da4bd490aa5902acd4d79f26d79bc2f2bb6349dda7a63f084a5
+        lifecycle:
+          preStop:
+            # Service 엔드포인트에서 빠질 시간을 준 뒤 앱이 drain(기본 20초)
+            sleep:
+              seconds: 5
         livenessProbe:
+          # 닫힌 chat Task는 스스로 다시 열리지 않음
+          # 그래서 readiness가 3분간 실패하면 새 Task로 교체되도록 liveness에 readiness 경로를 쓴다.
+          failureThreshold: 18
           httpGet:
-            path: /actuator/health/liveness
+            path: /actuator/health/readiness
             port: 8080
           periodSeconds: 10
         name: chat
@@ -104,6 +115,13 @@ spec:
       securityContext:
         fsGroup: 10001
       terminationGracePeriodSeconds: 45
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: chat
       volumes:
       - emptyDir: {}
         name: trust
