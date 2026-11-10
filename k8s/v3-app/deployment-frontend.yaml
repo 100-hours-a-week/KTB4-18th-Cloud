@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: v3-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - image: 764788758503.dkr.ecr.ap-northeast-2.amazonaws.com/mme-v3-frontend@sha256:168c5d377958f07bd14bad9abc0c0b868df010758424b2f59f7375369bc6c9d6
+        name: frontend
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 80
+          periodSeconds: 5
+        resources:
+          limits:
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: config
+          readOnly: true
+      nodeSelector:
+        karpenter.sh/capacity-type: on-demand
+        kubernetes.io/arch: amd64
+      volumes:
+      - configMap:
+          name: frontend-config
+        name: config

@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: v3-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/100-hours-a-week/KTB4-18th-Cloud.git
+    targetRevision: main
+    path: k8s/v3-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: v3-app
+  syncPolicy:
+    automated:
+      selfHeal: true
+      # prune은 꺼 둔다: Secret과 Gateway가 아직 Git 밖에 있어, 지워짐방지...(luke)

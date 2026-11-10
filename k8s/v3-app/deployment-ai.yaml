@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai
+  namespace: v3-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: ai
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - args:
+        - uvicorn
+        - backend.main:app
+        - --host
+        - 0.0.0.0
+        - --port
+        - '8001'
+        - --workers
+        - '1'
+        env:
+        - name: LANGSMITH_TRACING
+          value: 'false'
+        envFrom:
+        - secretRef:
+            name: ai-env
+        image: 764788758503.dkr.ecr.ap-northeast-2.amazonaws.com/mme-v3-ai@sha256:565ca42761dd25b538834e7d360e3d02e8cdd94b87dfb6f27a54eac71cbf46b6
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          periodSeconds: 10
+        name: ai
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8001
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 384Mi
+        startupProbe:
+          failureThreshold: 30
+          httpGet:
+            path: /health
+            port: 8001
+          periodSeconds: 5
+      nodeSelector:
+        karpenter.sh/capacity-type: on-demand
+        kubernetes.io/arch: amd64

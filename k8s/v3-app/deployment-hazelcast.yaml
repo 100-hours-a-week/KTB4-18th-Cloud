@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hazelcast
+  namespace: v3-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hazelcast
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: hazelcast
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: HZ_CLUSTERNAME
+          value: meomuneum-auth-v3
+        - name: HZ_NETWORK_JOIN_MULTICAST_ENABLED
+          value: 'false'
+        - name: HZ_NETWORK_JOIN_AUTODETECTION_ENABLED
+          value: 'false'
+        - name: JAVA_OPTS
+          value: -Xms128m -Xmx384m
+        image: hazelcast/hazelcast:5.7.0
+        name: hazelcast
+        readinessProbe:
+          tcpSocket:
+            port: 5701
+        resources:
+          limits:
+            memory: 768Mi
+          requests:
+            cpu: 100m
+            memory: 512Mi
+      nodeSelector:
+        karpenter.sh/capacity-type: on-demand
+        kubernetes.io/arch: amd64

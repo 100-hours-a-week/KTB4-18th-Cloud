@@ -1,0 +1,19 @@
+apiVersion: v1
+data:
+  default.conf: |
+    server {
+        listen 8443 ssl;
+        ssl_certificate /tls/tls.crt;
+        ssl_certificate_key /tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        location /internal/ {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto https;
+        }
+        location / { return 404; }
+    }
+kind: ConfigMap
+metadata:
+  name: core-tls-proxy
+  namespace: v3-app

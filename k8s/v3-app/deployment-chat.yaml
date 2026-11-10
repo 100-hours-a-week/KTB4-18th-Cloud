@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat
+  namespace: v3-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chat
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: chat
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: prod
+        - name: CHAT_RUNTIME_ENABLED
+          value: 'true'
+        - name: CHAT_CORE_AUTH_ENABLED
+          value: 'true'
+        - name: CORE_INTERNAL_BASE_URL
+          value: https://core-auth.v3-app.svc.cluster.local:8443
+        - name: CORE_AUTH_PRODUCER_IDS
+          value: core:00000000-0000-4000-8000-000000000003
+        - name: CHAT_REDIS_ENABLED
+          value: 'true'
+        - name: CHAT_AUTH_REDIS_ENABLED
+          value: 'true'
+        - name: CHAT_DISTRIBUTED_PRESENCE_ENABLED
+          value: 'true'
+        - name: CHAT_MESSAGE_RELAY_ENABLED
+          value: 'true'
+        - name: CHAT_CONTROL_EVENTS_ENABLED
+          value: 'true'
+        - name: CHAT_LIFECYCLE_ENABLED
+          value: 'true'
+        - name: CHAT_REDIS_ENVIRONMENT
+          value: v3-test
+        - name: CHAT_REDIS_USERNAME
+          value: v3app
+        - name: AUTH_CORS_ALLOWED_ORIGINS
+          value: https://v3.meomuneum.com
+        - name: JAVA_TOOL_OPTIONS
+          value: -Xmx512m -Duser.timezone=UTC -Djavax.net.ssl.trustStore=/trust/cacerts
+        envFrom:
+        - secretRef:
+            name: chat-env
+        image: 764788758503.dkr.ecr.ap-northeast-2.amazonaws.com/mme-v3-chat@sha256:6dd6c6d264c48da4bd490aa5902acd4d79f26d79bc2f2bb6349dda7a63f084a5
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          periodSeconds: 10
+        name: chat
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          periodSeconds: 5
+        resources:
+          limits:
+            memory: 1280Mi
+          requests:
+            cpu: 400m
+            memory: 768Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /trust
+          name: trust
+          readOnly: true
+      initContainers:
+      - command:
+        - sh
+        - -ec
+        - cp "$JAVA_HOME/lib/security/cacerts" /trust/cacerts; keytool -importcert -noprompt -alias v3-core -file /ca/ca.crt -keystore /trust/cacerts -storepass changeit
+        image: 764788758503.dkr.ecr.ap-northeast-2.amazonaws.com/mme-v3-chat@sha256:6dd6c6d264c48da4bd490aa5902acd4d79f26d79bc2f2bb6349dda7a63f084a5
+        name: trust
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        volumeMounts:
+        - mountPath: /trust
+          name: trust
+        - mountPath: /ca
+          name: ca
+          readOnly: true
+      nodeSelector:
+        karpenter.sh/capacity-type: on-demand
+        kubernetes.io/arch: amd64
+      securityContext:
+        fsGroup: 10001
+      terminationGracePeriodSeconds: 45
+      volumes:
+      - emptyDir: {}
+        name: trust
+      - configMap:
+          name: core-internal-ca
+        name: ca

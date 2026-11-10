@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mysql-initialize
+  namespace: v3-app
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - command:
+        - sh
+        - -ec
+        - |2
+
+          mysql --ssl-mode=REQUIRED -h "$MYSQL_HOST" -u "$MYSQL_ADMIN" meomuneum <<SQL
+          CREATE USER IF NOT EXISTS 'v3app'@'%' IDENTIFIED BY '$APP_PASSWORD' REQUIRE SSL;
+          GRANT ALL PRIVILEGES ON meomuneum.* TO 'v3app'@'%';
+          SQL
+        envFrom:
+        - secretRef:
+            name: mysql-bootstrap
+        image: mysql:8.4
+        name: mysql
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+      nodeSelector:
+        karpenter.sh/capacity-type: on-demand
+        kubernetes.io/arch: amd64
+      restartPolicy: Never

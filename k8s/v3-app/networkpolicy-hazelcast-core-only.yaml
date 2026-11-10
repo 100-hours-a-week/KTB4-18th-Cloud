@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hazelcast-core-only
+  namespace: v3-app
+spec:
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: core
+    ports:
+    - port: 5701
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: hazelcast
+  policyTypes:
+  - Ingress

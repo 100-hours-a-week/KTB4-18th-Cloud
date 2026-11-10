@@ -1,0 +1,26 @@
+apiVersion: v1
+data:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDDjCCAfagAwIBAgIJAKqjNSuB6BkDMA0GCSqGSIb3DQEBCwUAMC0xKzApBgNV
+    BAMMImNvcmUtYXV0aC52My1hcHAuc3ZjLmNsdXN0ZXIubG9jYWwwHhcNMjYxMTA5
+    MDgzNDUxWhcNMjcwMjA3MDgzNDUxWjAtMSswKQYDVQQDDCJjb3JlLWF1dGgudjMt
+    YXBwLnN2Yy5jbHVzdGVyLmxvY2FsMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
+    CgKCAQEA3n01WOSciqWlgwdwFVVB+stOnrsLQtXl5+0y83dVK07Nr9DB30IlaILt
+    GVh9YLH5lVZ2DhTOnc3+sujska+NWw0evo/HGn81UmaxpowF5PfEm8oQjays7Ga5
+    Z+HDpBxArSzY1H4UXP0qd+McdG+3K1NwZ/p5bCHnv5bgeFBpayv0WuXewIXCYhgs
+    o1kbceh0o57yW1PAYe2MbvCaHGjP+igT0Z/37+OH3agDdNS2PDRkKnj6nAQSh8s2
+    PoQYIpLES2NbPJGNoK3s5IxI8HK/8rxpWCgqk0fkVa0826O/YSeBz+wcFwFpci/Q
+    gbrbrw4LbjIx0sAKIW2zMmr4GSMRWwIDAQABozEwLzAtBgNVHREEJjAkgiJjb3Jl
+    LWF1dGgudjMtYXBwLnN2Yy5jbHVzdGVyLmxvY2FsMA0GCSqGSIb3DQEBCwUAA4IB
+    AQBpxWAihC2VxGDuJKE55+3uawAVlErsA7kQxhbfgMbNn9Fc27lwOCpzzhzQTTEW
+    eSa3cFlPdVwDo3pVH4wjR/6WPAiFNmZLTwnmG+Nt3Zxt+OcEQkqr53faA4mR4dBJ
+    wie8mfiC2nsCBJoB7BQRleTDv1jUglAfeX+5f7aZuAG1TJbMLedL0znzKPyxlH0r
+    FM/tsQ1FLZGo/vt5ofkEP9AoBoOYi7PP7t91OEhBZH6p2yVd8Xzp0l0HpLM/siJN
+    QlEKRSdTARWYnPvZbJrnopoOE2OfY71i2rjwU3ZTh3z/XV8w9csWtC1F6V0bfC8Q
+    9+hJ2epemCoWvlKctS/qGGNv
+    -----END CERTIFICATE-----
+kind: ConfigMap
+metadata:
+  name: core-internal-ca
+  namespace: v3-app

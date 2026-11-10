@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core
+  namespace: v3-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: core
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: core
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: prod
+        - name: AUTH_BACKEND_REPLICA_COUNT
+          value: '1'
+        - name: AUTH_STATE_HAZELCAST_ENABLED
+          value: 'true'
+        - name: AUTH_STATE_HAZELCAST_CLUSTER_NAME
+          value: meomuneum-auth-v3
+        - name: AUTH_STATE_HAZELCAST_MEMBERS
+          value: hazelcast:5701
+        - name: AUTH_STATE_HAZELCAST_EXPECTED_MEMBER_COUNT
+          value: '1'
+        - name: AUTH_CORS_ALLOWED_ORIGINS
+          value: https://v3.meomuneum.com
+        - name: CORE_CHAT_AUTH_ENABLED
+          value: 'true'
+        - name: CORE_AUTH_REDIS_ENABLED
+          value: 'true'
+        - name: CORE_AUTH_REDIS_USERNAME
+          value: v3app
+        - name: CORE_AUTH_REDIS_ENVIRONMENT
+          value: v3-test
+        - name: CORE_AUTH_PRODUCER_ID
+          value: core:00000000-0000-4000-8000-000000000003
+        - name: AUTH_MUTATION_GATE_OPEN
+          value: 'true'
+        - name: RECOMMENDATION_AI_BASE_URL
+          value: http://ai:8001
+        - name: SPEECH_TRANSCRIPTION_AI_BASE_URL
+          value: http://ai:8001
+        - name: LOCATION_REVERSE_GEOCODING_BASE_URL
+          value: http://127.0.0.1:1
+        - name: AUTH_DIRECT_V2_ENABLED
+          value: 'true'
+        - name: SPRING_APPLICATION_JSON
+          value: '{"location-recommendation": {"enabled": false, "ai": {"base-url": "http://ai-server:8001", "allowed-origins": "http://ai-server:8001"}}, "auth": {"direct-v2": {"enabled": true, "refresh-verified": true, "refresh-recovery-verified": true, "rebootstrap-verified": true, "safety-mode": "PRODUCTION", "backend-instances": "1", "external-restore-epoch": "1"}}}'
+        - name: MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE
+          value: readinessState,db,authState
+        - name: CORE_FLYWAY_ENABLED
+          value: 'true'
+        - name: JAVA_TOOL_OPTIONS
+          value: -Xmx512m -Duser.timezone=UTC
+        envFrom:
+        - secretRef:
+            name: core-env
+        image: 764788758503.dkr.ecr.ap-northeast-2.amazonaws.com/mme-v3-core@sha256:b284c4031803443bb264d3df6b0baab9a898f888dda374da9482acd6c5597573
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          periodSeconds: 10
+        name: core
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          periodSeconds: 5
+        resources:
+          limits:
+            memory: 1280Mi
+          requests:
+            cpu: 400m
+            memory: 768Mi
+        startupProbe:
+          failureThreshold: 36
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          periodSeconds: 5
+      - image: public.ecr.aws/docker/library/nginx:1.28-alpine
+        name: internal-tls
+        resources:
+          limits:
+            memory: 96Mi
+          requests:
+            cpu: 20m
+            memory: 32Mi
+        volumeMounts:
+        - mountPath: /tls
+          name: tls
+          readOnly: true
+        - mountPath: /etc/nginx/conf.d
+          name: proxy
+          readOnly: true
+      nodeSelector:
+        karpenter.sh/capacity-type: on-demand
+        kubernetes.io/arch: amd64
+      volumes:
+      - name: tls
+        secret:
+          secretName: core-internal-tls
+      - configMap:
+          name: core-tls-proxy
+        name: proxy

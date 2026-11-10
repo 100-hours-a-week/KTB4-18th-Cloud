@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: chat-initialize
+  namespace: v3-app
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - command:
+        - java
+        - -Dloader.main=com.muse.meomuneum.chat.runtime.ChatRecoveryCommand
+        - -cp
+        - /app/app.jar
+        - org.springframework.boot.loader.launch.PropertiesLauncher
+        env:
+        - name: CHAT_RECOVERY_CONFIRM
+          value: chat-stopped
+        - name: CHAT_REDIS_USERNAME
+          value: v3app
+        - name: CHAT_REDIS_ENVIRONMENT
+          value: v3-test
+        envFrom:
+        - secretRef:
+            name: chat-env
+        image: 764788758503.dkr.ecr.ap-northeast-2.amazonaws.com/mme-v3-chat@sha256:6dd6c6d264c48da4bd490aa5902acd4d79f26d79bc2f2bb6349dda7a63f084a5
+        name: recover
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+      nodeSelector:
+        karpenter.sh/capacity-type: on-demand
+        kubernetes.io/arch: amd64
+      restartPolicy: Never

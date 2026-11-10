@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pg-initialize
+  namespace: v3-app
+spec:
+  activeDeadlineSeconds: 600
+  backoffLimit: 0
+  template:
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - command:
+        - python
+        - -c
+        - |2
+
+          import os
+          import psycopg
+          from psycopg import sql
+          from db.models import init_db
+          init_db()
+          with psycopg.connect(os.environ['DATABASE_URL'].replace('postgresql+psycopg://', 'postgresql://', 1)) as conn:
+              if conn.execute('SELECT 1 FROM pg_roles WHERE rolname=%s', ('v3app',)).fetchone() is None:
+                  conn.execute(sql.SQL('CREATE ROLE v3app LOGIN PASSWORD {}').format(sql.Literal(os.environ['APP_PASSWORD'])))
+              conn.execute('GRANT USAGE ON SCHEMA public TO v3app')
+              conn.execute('GRANT SELECT ON ALL TABLES IN SCHEMA public TO v3app')
+        envFrom:
+        - secretRef:
+            name: pg-bootstrap
+        image: 764788758503.dkr.ecr.ap-northeast-2.amazonaws.com/mme-v3-ai@sha256:565ca42761dd25b538834e7d360e3d02e8cdd94b87dfb6f27a54eac71cbf46b6
+        name: postgres
+        resources:
+          limits:
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+      nodeSelector:
+        karpenter.sh/capacity-type: on-demand
+        kubernetes.io/arch: amd64
+      restartPolicy: Never
